@@ -22,6 +22,7 @@ var upgrader = websocket.Upgrader{
 type EasyWS struct {
 	SocketTypes              []string
 	ConnectionAllowedChecker IsConnectionAllowedChecker
+	OnJoin                   OnJoinEvent
 
 	Sockets         []*Socket
 	MessageHandlers map[string]MessageHandler
@@ -113,14 +114,28 @@ func (easyWs *EasyWS) Route(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
+			switch data.MsgType {
+			case "PONG":
+				continue
+			default:
+			}
+
+			found := false
 			for name, handler := range easyWs.MessageHandlers {
 				if name == data.MsgType {
 					handler.Do(&socket, data.Payload)
-					continue
+					found = true
+					break
 				}
 			}
 
-			fmt.Printf("Unhandled socket message: %v\n", data.MsgType)
+			if !found {
+				fmt.Printf("Unhandled socket message: %v\n", data.MsgType)
+			}
 		}
 	}()
+
+	if easyWs.OnJoin != nil {
+		easyWs.OnJoin(socketType, &socket)
+	}
 }
