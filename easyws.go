@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
+	"github.com/labstack/echo"
 	"golang.org/x/exp/slices"
 )
 
@@ -65,27 +65,24 @@ func (easyWs *EasyWS) BroadcastTo(to, msgType string, payload interface{}) {
 	}
 }
 
-func (easyWs *EasyWS) Route(w http.ResponseWriter, r *http.Request) {
+func (easyWs *EasyWS) Route(c echo.Context) error {
 	socketType := ""
 	if len(easyWs.SocketTypes) > 0 {
-		vars := mux.Vars(r)
-		socketType = strings.ToUpper(vars["type"])
+		socketType = strings.ToUpper(c.Param("type"))
 		if !slices.Contains(easyWs.SocketTypes, socketType) {
-			w.WriteHeader(http.StatusBadRequest)
-			return
+			return c.NewHTTPError(http.StatusBadRequest, "Invalid socket type requested")
 		}
 
-		if !easyWs.ConnectionAllowedChecker(socketType, r) {
-			w.WriteHeader(http.StatusForbidden)
-			return
+		if !easyWs.ConnectionAllowedChecker(socketType, &c) {
+			return c.NewHTTPError(http.StatusUnauthorized, "Not authorized")
 		}
 	}
 
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return c.NewHTTPError(http.StatusInternalServerError, "Failed to upgrade connection")
 	}
+	defer conn.Close()
 
 	socket := Socket{
 		Type: socketType,
@@ -98,44 +95,42 @@ func (easyWs *EasyWS) Route(w http.ResponseWriter, r *http.Request) {
 
 	socket.StartPings()
 
-	go func() {
-		for {
-			data := SocketMessage{}
-			err := conn.ReadJSON(&data)
-			if err != nil {
-				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					socket.Open = false
-					return
-				} else if websocket.IsCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					socket.Open = false
-					return
-				}
-
-				continue
-			}
-
-			switch data.MsgType {
-			case "PONG":
-				continue
-			default:
-			}
-
-			found := false
-			for name, handler := range easyWs.MessageHandlers {
-				if name == data.MsgType {
-					handler.Do(&socket, data.Payload)
-					found = true
-					break
-				}
-			}
-
-			if !found {
-				fmt.Printf("Unhandled socket message: %v\n", data.MsgType)
-			}
-		}
-	}()
-
 	if easyWs.OnJoin != nil {
 		easyWs.OnJoin(socketType, &socket)
+	}
+
+	for {
+		data := SocketMessage{}
+		err := conn.ReadJSON(&data)
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				socket.Open = false
+				return c.NewHTTPError(http.StatusInternalServerError, "Unexpected websocket closure")
+			} else if websocket.IsCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				socket.Open = false
+				return c.NewHTTPError(http.StatusOK, "Bye bye")
+			}
+
+			continue
+		}
+
+		switch data.MsgType {
+		case "PONG":
+			continue
+		default:
+		}
+
+		found := false
+		for name, handler := range easyWs.MessageHandlers {
+			if name == data.MsgType {
+				handler.Do(&socket, data.Payload)
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			fmt.Printf("Unhandled socket message: %v\n", data.MsgType)
+		}
 	}
 }

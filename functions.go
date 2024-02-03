@@ -1,6 +1,6 @@
 package easyws
 
-import "net/http"
+import "github.com/labstack/echo"
 
-type IsConnectionAllowedChecker func(socketType string, r *http.Request) bool
+type IsConnectionAllowedChecker func(socketType string, c *echo.Context) bool
 type OnJoinEvent func(socketType string, s *Socket)
