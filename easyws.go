@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
 	"golang.org/x/exp/slices"
 )
 
@@ -70,17 +70,17 @@ func (easyWs *EasyWS) Route(c echo.Context) error {
 	if len(easyWs.SocketTypes) > 0 {
 		socketType = strings.ToUpper(c.Param("type"))
 		if !slices.Contains(easyWs.SocketTypes, socketType) {
-			return c.NewHTTPError(http.StatusBadRequest, "Invalid socket type requested")
+			return echo.NewHTTPError(http.StatusBadRequest, "Invalid socket type requested")
 		}
 
 		if !easyWs.ConnectionAllowedChecker(socketType, &c) {
-			return c.NewHTTPError(http.StatusUnauthorized, "Not authorized")
+			return echo.NewHTTPError(http.StatusUnauthorized, "Not authorized")
 		}
 	}
 
 	conn, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
 	if err != nil {
-		return c.NewHTTPError(http.StatusInternalServerError, "Failed to upgrade connection")
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to upgrade connection")
 	}
 	defer conn.Close()
 
@@ -105,10 +105,10 @@ func (easyWs *EasyWS) Route(c echo.Context) error {
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				socket.Open = false
-				return c.NewHTTPError(http.StatusInternalServerError, "Unexpected websocket closure")
+				return echo.NewHTTPError(http.StatusInternalServerError, "Unexpected websocket closure")
 			} else if websocket.IsCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				socket.Open = false
-				return c.NewHTTPError(http.StatusOK, "Bye bye")
+				return echo.NewHTTPError(http.StatusOK, "Bye bye")
 			}
 
 			continue
