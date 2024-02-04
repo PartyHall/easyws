@@ -88,6 +88,7 @@ func (easyWs *EasyWS) Route(c echo.Context) error {
 		Type: socketType,
 		Open: true,
 		Conn: conn,
+		User: c.Get("user"),
 		mtx:  &sync.Mutex{},
 	}
 

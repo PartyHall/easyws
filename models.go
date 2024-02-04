@@ -21,6 +21,7 @@ type Socket struct {
 	Type string
 	Open bool
 	Conn *websocket.Conn
+	User interface{}
 
 	mtx *sync.Mutex
 }
